@@ -1,0 +1,38 @@
+name: mdl-sc-isoform-2025-ms
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - ipykernel
+  # data
+  - edlib
+  - h5py
+  - leidenalg
+  - ncls
+  - networkx
+  - numba
+  - numpy
+  - pandas
+  - polars
+  - pysam
+  - python-fastjsonschema
+  - python-igraph
+  - pyyaml
+  - scipy
+  - sparse
+  # visualization
+  - matplotlib
+  - python-graphviz
+  - pygraphviz
+  - upsetplot
+  # mdl code
+  - pip:
+    - git+https://github.com/MethodsDev/isoscelles.git
+    - git+https://github.com/MethodsDev/mdl-core.git
+    - git+https://github.com/MethodsDev/callao.git
+    - git+https://github.com/MethodsDev/bouncer.git
+    - git+https://github.com/MethodsDev/bugzapper.git
+    - git+https://github.com/MethodsDev/ITV.git
+    - .

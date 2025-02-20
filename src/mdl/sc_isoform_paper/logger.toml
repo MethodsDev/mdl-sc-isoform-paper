@@ -1,0 +1,18 @@
+version = 1
+
+[loggers]
+"" = { level = "NOTSET" }
+mdl = { level = "WARNING", handlers = ["console"] }
+bouncer = { level = "INFO", handlers = ["console"] }
+"mdl.sc_isoform_paper" = { level = "INFO", handlers = ["console"] }
+
+[handlers.console]
+class = "mdl.log.ClickHandler"
+formatter = "click"
+level = "DEBUG"
+
+[formatters.click]
+class = "mdl.log.ColorFormatter"
+format = "[%(levelname)9s %(asctime)s %(name)7s] %(message)s"
+datefmt = "%Y-%m-%d %H:%M:%S"
+style = "%"

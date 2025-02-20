@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools >= 61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdl-sc-isoform-paper"
+version = "0.1"
+description = "Notebooks and scripts for the Fluent/10x MAS-seq analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+annotate_priming = "mdl.sc_isoform_paper.cli:annotate_priming"
+extract_barcodes = "mdl.sc_isoform_paper.cli:extract_barcodes"
+
+[tool.setuptools.package-data]
+"mdl.sc_isoform_paper" = ["figures.mplstyle", "logger.toml"]
