@@ -1,0 +1,132 @@
+```{r}
+---
+title: "Seurat - get cell clusters"
+output: github_document
+params:
+  sample_name: "10X_3p_reconstructed_goodpriming_dedup"
+  data_dir: "DE_analysis/10x_3'_goodpriming_reconstructed_dedup/"
+  output_prefix: "DE_analysis/10X_3p_reconstructed_goodpriming_dedup.isoforms_seurat"
+  cluster_labels:
+    "0": "CD4 T cells 1"
+    "1": "CD4 T cells 2"
+    "2": "Naive CD4"
+    "3": "Cytotoxic T cells"
+    "4": "B cells"
+    "5": "CD14 Monocytes"
+    "6": "CD16 Monocytes"
+    "7": "DC"
+---
+
+```
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+
+library(tidyverse)
+library(Seurat)
+
+sample_name   <- params$sample_name
+data_dir      <- params$data_dir
+output_prefix <- params$output_prefix
+cluster_labels <- unlist(params$cluster_labels)  # named character vector
+
+```
+
+```{r}
+data <- Read10X(
+  data.dir       = data_dir,
+  gene.column    = 1,
+  cell.column    = 2,
+  unique.features= TRUE,
+  strip.suffix   = FALSE
+)
+
+umi_counts_per_cell <- sort(colSums(data), decreasing = TRUE)
+plot(umi_counts_per_cell, log = 'xy')
+
+seurat_obj <- CreateSeuratObject(counts = data, project = "project")
+cluster_df <- read.csv(file.path(data_dir, "cell_clusters.csv"), row.names = 1)
+
+seurat_obj <- AddMetaData(seurat_obj, cluster_df)
+
+seurat_obj[["percent.mt"]] <- PercentageFeatureSet(seurat_obj, pattern = "^MT-")
+
+# QC plots
+seurat_obj@meta.data %>% dplyr::select(nCount_RNA) %>% arrange(desc(nCount_RNA)) %>%
+  mutate(i = row_number()) %>%
+  ggplot(aes(x = i, y = nCount_RNA)) + geom_point() + theme_bw() +
+  scale_y_continuous(trans='log10') + scale_x_continuous(trans='log10') +
+  ggtitle("nCount_RNA: UMI counts per cell")
+
+seurat_obj@meta.data %>% dplyr::select(nFeature_RNA) %>% arrange(desc(nFeature_RNA)) %>%
+  mutate(i=row_number()) %>%
+  ggplot(aes(x=i, y=nFeature_RNA)) + geom_point() + theme_bw() +
+  scale_y_continuous(trans='log10') +
+  ggtitle("nFeature_RNA: gene count per cell")
+
+VlnPlot(seurat_obj, features = c("nFeature_RNA","nCount_RNA","percent.mt"), ncol = 3)
+FeatureScatter(seurat_obj, feature1 = "nCount_RNA", feature2 = "percent.mt") +
+  FeatureScatter(seurat_obj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+saveRDS(seurat_obj, file = paste0(output_prefix, "-seurat_obj-preCellFiltering.rds"))
+
+```
+
+```{r}
+# Standard Seurat workflow
+seurat_obj <- NormalizeData(seurat_obj, normalization.method = "LogNormalize", scale.factor = 10000)
+seurat_obj <- FindVariableFeatures(seurat_obj, selection.method = "vst", nfeatures = 2000)
+all.features <- rownames(seurat_obj)
+seurat_obj <- ScaleData(seurat_obj, features = all.features)
+seurat_obj <- RunPCA(seurat_obj, features = VariableFeatures(seurat_obj))
+ElbowPlot(seurat_obj)
+
+seurat_obj <- FindNeighbors(seurat_obj, dims = 1:12)
+seurat_obj <- FindClusters(seurat_obj, resolution = 0.6)
+seurat_obj <- RunUMAP(seurat_obj, dims = 1:12)
+DimPlot(seurat_obj, reduction = "umap", label = TRUE)
+
+saveRDS(seurat_obj, file = paste0(output_prefix, "-seurat_obj.rds"))
+
+```
+
+```{r}
+# Use provided cluster labels
+Idents(seurat_obj) <- "cluster"
+seurat_obj <- subset(seurat_obj, cluster != -1)
+
+cluster_named <- setNames(cluster_labels[as.character(seurat_obj$cluster)], names(seurat_obj$cluster))
+seurat_obj$cluster_named <- cluster_named[Cells(seurat_obj)]
+
+options(repr.plot.width = 10, repr.plot.height = 8)
+DimPlot(seurat_obj, reduction = "umap", group.by = "cluster_named", label = TRUE)
+
+```
+
+```{r}
+# Markers
+seurat_obj.markers <- FindAllMarkers(seurat_obj, only.pos = TRUE)
+
+res_DE_table <- seurat_obj.markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1, p_val_adj < 0.05)
+
+write.table(res_DE_table,
+            file = paste0(output_prefix, "-filtered_marker_isoforms.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+write.table(seurat_obj.markers,
+            file = paste0(output_prefix, "-seurat.markers.tsv"),
+            sep = "\t", quote = FALSE)
+
+top_20_markers <- seurat_obj.markers %>%
+  group_by(cluster) %>% dplyr::filter(avg_log2FC > 1) %>%
+  slice_head(n = 20) %>% ungroup()
+
+write.table(top_20_markers,
+            file = paste0(output_prefix, "-top20_filtered_marker_isoforms.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+top_20_markers
+
+```

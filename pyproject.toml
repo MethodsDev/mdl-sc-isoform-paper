@@ -14,5 +14,14 @@ dependencies = []
 annotate_priming = "mdl.sc_isoform_paper.cli:annotate_priming"
 extract_barcodes = "mdl.sc_isoform_paper.cli:extract_barcodes"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.setuptools.package-data]
-"mdl.sc_isoform_paper" = ["figures.mplstyle", "logger.toml"]
+"mdl.sc_isoform_paper" = ["figures.mplstyle", 
+    "logger.toml",
+    "templates/*.Rmd"
+]
+
+[tool.setuptools]
+include-package-data = true
