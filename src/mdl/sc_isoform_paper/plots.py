@@ -680,42 +680,71 @@ def test_vs_first(dists, method="brunnermunzel", alternative="two-sided"):
         pvals.append(p)
     return np.array(pvals)
 
-def add_sig_markers(ax, dists_for_plot, qvals, ref_idx=0, line_color="#444",
-                    height_frac=0.03, gap_frac=0.02, lw=1.2, fontsize=12):
+
+def add_sig_markers(
+    ax,
+    dists_for_plot,
+    qvals,
+    ref_idx=0,
+    line_color="#444",
+    lw=1.2,
+    fontsize=12,
+    *,
+    markers_anchor="data",      # "data" or "axes"
+    top_band_frac=0.12,         # used when markers_anchor="axes"
+    gap_frac=0.15,              # gap fraction inside the top band (axes mode)
+    height_frac=0.03,           # used when markers_anchor="data"
+):
     """
-    Draw stacked brackets from ref_idx to each other group, labeled by q-values.
-    dists_for_plot must be in the same scale as the y-axis (i.e., log10 if you plotted log10).
+    Draw brackets from ref_idx to each other group, labeled by q-values.
+    dists_for_plot must be in axis scale (log-transformed if axis is log10).
     """
     N = len(dists_for_plot)
-    if N <= 1: return
+    if N <= 1:
+        return
 
-    # y scale
-    y_min = min(np.min(v) for v in dists_for_plot if len(v))
-    y_max = max(np.max(v) for v in dists_for_plot if len(v))
-    y_range = (y_max - y_min) if y_max > y_min else 1.0
+    y0, y1 = ax.get_ylim()
+    yr = y1 - y0
 
-    # starting height just above the tallest violin
-    y = y_max + gap_frac * y_range
-    top_seen = ax.get_ylim()[1]
+    if markers_anchor == "axes":
+        # place all brackets inside the top band of the current axis limits
+        available = max(1e-12, top_band_frac * yr)
+        # allocate uniform heights and gaps that fit inside 'available'
+        # total = N-1 brackets -> N-1 heights + N-1 gaps
+        n = N - 1
+        if n == 0:
+            return
+        gap = available * gap_frac / max(1, n)  # small gaps
+        h = max(1e-12, (available - gap * (n - 1)) / n)
+        y_start = y1 - available
+        y = y_start
+        for j in range(1, N):
+            x1, x2 = ref_idx + 1, j + 1
+            ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], c=line_color, lw=lw)
+            ax.text((x1 + x2) / 2, y + h, _p_to_stars(float(qvals[j - 1])),
+                    ha="center", va="bottom", fontsize=fontsize, color=line_color)
+            y += h + gap
+        # do not change ylim in axes-anchored mode
+        return
+
+    # default: anchor to data max and expand ylim if needed
+    y_min_data = min(np.min(v) for v in dists_for_plot if len(v))
+    y_max_data = max(np.max(v) for v in dists_for_plot if len(v))
+    y_range = (y_max_data - y_min_data) if y_max_data > y_min_data else max(1.0, yr)
+    y = y_max_data + height_frac * y_range  # start above data
+    top_seen = max(y1, y)
 
     for j in range(1, N):
         x1, x2 = ref_idx + 1, j + 1
         h = height_frac * y_range
-
-        # bracket
-        ax.plot([x1, x1, x2, x2], [y, y+h, y+h, y], c=line_color, lw=lw)
-        # text
-        ax.text((x1 + x2) / 2, y + h, _p_to_stars(float(qvals[j-1])),
+        ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], c=line_color, lw=lw)
+        ax.text((x1 + x2) / 2, y + h, _p_to_stars(float(qvals[j - 1])),
                 ha="center", va="bottom", fontsize=fontsize, color=line_color)
-
         top_seen = max(top_seen, y + h)
-        # stack next bracket higher
-        y += (h + gap_frac * y_range)
+        y += h + height_frac * y_range
 
-    # ensure everything is visible
-    ymin, ymax = ax.get_ylim()
-    if top_seen > ymax:
-        ax.set_ylim(ymin, top_seen + gap_frac * y_range)
+    if top_seen > y1:
+        ax.set_ylim(y0, top_seen + height_frac * y_range)
 
 
 def test_all_pairs(
@@ -839,39 +868,49 @@ def plot_dists_vs_first(
     *,
     title="UMIs/cell",
     y_label="#UMIs",
-    method="brunnermunzel",         # or "mannwhitney"
+    method="brunnermunzel",
     alternative="two-sided",
     figsize=(16, 5),
     savepath: Path | None = None,
+    scale="log10",              # "log10" or "linear"
+    ylim=None,                  # tuple (ymin, ymax) or None
+    markers_anchor="data",      # "data" or "axes"
+    top_band_frac=0.12,         # when markers_anchor="axes"
 ):
     """
-    Log10-violin plot of multiple groups, with significance markers for (2..N) vs first.
-    Returns (fig, ax). Saves if `savepath` is provided (slashes in filename sanitized).
+    Violin plot of multiple groups with significance markers for (2..N) vs first.
+    scale="log10" transforms positives with log10 for plotting only.
+    When ylim is given and markers_anchor="axes", brackets are kept inside that range.
     """
-    # --- single pass clean so plotting & stats stay aligned ---
-    kept_raw, kept_log, kept_labels = [], [], []
+    kept_raw, kept_plot, kept_labels = [], [], []
     for arr, lab in zip(dists, labels):
         a = np.asarray(arr, float)
         a = a[np.isfinite(a)]
         if a.size == 0:
             continue
-        a_pos = a[a > 0]                 # for plotting on log scale
-        if a_pos.size == 0:
-            continue
-        kept_raw.append(a)               # stats on raw
-        kept_log.append(np.log10(a_pos)) # brackets on same scale as axis
+        if scale == "log10":
+            a_pos = a[a > 0]
+            if a_pos.size == 0:
+                continue
+            kept_raw.append(a)                 # stats on raw
+            kept_plot.append(np.log10(a_pos))  # plotted values
+        elif scale == "linear":
+            kept_raw.append(a)
+            kept_plot.append(a)
+        else:
+            raise ValueError("scale must be 'log10' or 'linear'")
         kept_labels.append(lab)
 
     if len(kept_raw) < 2:
         fig, ax = plt.subplots(1, 1, figsize=figsize)
-        ax.text(0.5, 0.5, "Not enough data to compare", ha="center", va="center", transform=ax.transAxes)
+        ax.text(0.5, 0.5, "Not enough data to compare", ha="center", va="center",
+                transform=ax.transAxes)
         if savepath is not None:
-            fig.savefig(_sanitize_filename(Path(savepath)))
+            fig.savefig(savepath, bbox_inches="tight")
         return fig, ax
 
-    # --- draw violins (directly, to avoid a second round of filtering) ---
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    vp = ax.violinplot(kept_log, showmedians=True, widths=0.8)
+    vp = ax.violinplot(kept_plot, showmedians=True, widths=0.8)
     for b in vp["bodies"]:
         b.set_alpha(1.0)
     for k in ("cmaxes", "cmins", "cmedians"):
@@ -880,29 +919,38 @@ def plot_dists_vs_first(
 
     ax.set_title(title)
     ax.set_xticks(range(1, len(kept_labels) + 1), kept_labels)
-
-    # --- nice log decade ticks & headroom for one row of stars ---
-    all_logs = np.hstack(kept_log)
-    e_min = int(np.floor(all_logs.min()))
-    e_max_data = float(np.percentile(all_logs, 99.9))
-    majors = np.arange(e_min, int(np.floor(e_max_data)) + 1)
-    ax.set_yticks(majors)
-    ax.set_yticklabels([f"$10^{e}$" for e in majors])
-    minors = np.log10([v * 10**e for e in majors for v in range(2, 10)])
-    minors = minors[minors < e_max_data]
-    ax.set_yticks(minors, minor=True)
-    ax.set_ylim(e_min, e_max_data * 1.02)   # initial; add_sig_markers may expand
-
-    # --- stats: 2..N vs first (on raw), FDR, then brackets (on log) ---
-    pvals = test_vs_first(kept_raw, method=method, alternative=alternative)
-    qvals = bh_adjust(pvals)
-    add_sig_markers(ax, kept_log, qvals, ref_idx=0)
-
     ax.set_ylabel(y_label)
 
-    # NOTE: avoid fig.tight_layout() when using constrained layout styles
+    # ticks
+    if scale == "log10":
+        all_logs = np.hstack(kept_plot)
+        e_min = int(np.floor(all_logs.min()))
+        e_max_data = float(np.percentile(all_logs, 99.9))
+        majors = np.arange(e_min, int(np.floor(e_max_data)) + 1)
+        ax.set_yticks(majors)
+        ax.set_yticklabels([f"$10^{e}$" for e in majors])
+        minors = np.log10([v * 10**e for e in majors for v in range(2, 10)])
+        minors = minors[minors < e_max_data]
+        ax.set_yticks(minors, minor=True)
+        ax.set_ylim(e_min, e_max_data * 1.02)
+
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+
+    # stats and markers
+    pvals = test_vs_first(kept_raw, method=method, alternative=alternative)
+    qvals = bh_adjust(pvals)
+    add_sig_markers(
+        ax,
+        kept_plot,
+        qvals,
+        ref_idx=0,
+        markers_anchor=markers_anchor,
+        top_band_frac=top_band_frac,
+    )
+
     if savepath is not None:
-        fig.savefig(_sanitize_name(Path(savepath)), bbox_inches="tight")
+        fig.savefig(savepath, bbox_inches="tight")
     return fig, ax
 
 
