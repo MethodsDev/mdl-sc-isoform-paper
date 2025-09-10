@@ -7,6 +7,7 @@ dependencies:
   - pip
   - ipykernel
   # data
+  - anndata
   - edlib
   - h5py
   - leidenalg
@@ -20,13 +21,26 @@ dependencies:
   - python-fastjsonschema
   - python-igraph
   - pyyaml
+  - scanpy
+  - scikit-learn
   - scipy
+  - seaborn
   - sparse
   # visualization
   - matplotlib
   - python-graphviz
   - pygraphviz
   - upsetplot
+  # R base and packages
+  - r-base
+  - r-seurat
+  - r-tidyverse 
+  - r-dplyr
+  - r-ggplot2
+  - r-tidyr
+  - r-tibble
+  - r-matrix
+  - r-patchwork
   # mdl code
   - pip:
     - git+https://github.com/MethodsDev/isoscelles.git
@@ -35,4 +49,5 @@ dependencies:
     - git+https://github.com/MethodsDev/bouncer.git
     - git+https://github.com/MethodsDev/bugzapper.git
     - git+https://github.com/MethodsDev/ITV.git
+    - git+https://github.com/RicYaben/UpSetPlot.git@bceb91d7655dd30a189eb58823c9b301a174f35b
     - .
