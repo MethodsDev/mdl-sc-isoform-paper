@@ -91,7 +91,7 @@ saveRDS(seurat_obj, file = paste0(output_prefix, "-seurat_obj.rds"))
 ```
 
 ```{r}
-# Use provided cluster labels
+# Use loaded cluster labels
 Idents(seurat_obj) <- "cluster"
 seurat_obj <- subset(seurat_obj, cluster != -1)
 
