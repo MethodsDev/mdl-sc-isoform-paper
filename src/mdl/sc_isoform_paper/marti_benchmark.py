@@ -191,37 +191,48 @@ def plot_absolute(df_long, metric="cpu_time", title=None, savepath=None):
 
 # ----- heatmap with a direction for stats -----
 def plot_heatmap(ct, normalize=None, title=None, savepath=None):
-    M = ct.values.astype(float)
-    ann = ct.values.astype(int)
+    # counts in display orientation: rows=Restrander, cols=Marti
+    B = ct.values.astype(float).T
+    ann = ct.values.astype(int).T  # counts for annotations
 
     if normalize == 'all':
-        denom = M.sum()
-        D = M / denom if denom else M
+        denom = B.sum()
+        D = B / denom if denom else B
         cbar_label = "fraction of all"
     elif normalize == 'row':
-        denom = M.sum(axis=1, keepdims=True)  # shape (rows,1)
-        D = np.divide(M, denom, out=np.zeros_like(M), where=denom!=0)
+        denom = B.sum(axis=1, keepdims=True)          # per displayed row
+        D = np.divide(B, denom, out=np.zeros_like(B), where=denom != 0)
         cbar_label = "row fraction"
     elif normalize == 'col':
-        denom = M.sum(axis=0, keepdims=True)  # shape (1,cols)
-        D = np.divide(M, denom, out=np.zeros_like(M), where=denom!=0)
+        denom = B.sum(axis=0, keepdims=True)          # per displayed column
+        D = np.divide(B, denom, out=np.zeros_like(B), where=denom != 0)
         cbar_label = "column fraction"
     else:
-        D = M
+        D = B
         cbar_label = "count"
 
-    fig, ax = plt.subplots(figsize=(1.2*ct.shape[1]+2, 1.0*ct.shape[0]+2))
-    im = ax.imshow(D, aspect='auto')
-    ax.set_xticks(range(ct.shape[1])); ax.set_xticklabels(ct.columns, rotation=45, ha='right')
-    ax.set_yticks(range(ct.shape[0])); ax.set_yticklabels(ct.index)
+    # figure sized for cols=Marti, rows=Restrander
+    fig, ax = plt.subplots(figsize=(1.2 * ct.shape[0] + 2, 1.0 * ct.shape[1] + 2))
+    im = ax.imshow(D, aspect="auto")
 
-    for i in range(ct.shape[0]):
-        for j in range(ct.shape[1]):
-            ax.text(j, i, f"{ann[i,j]}" + (f"\n{D[i,j]*100:.1f}%" if normalize else ""),
-                    ha='center', va='center', fontsize=9)
+    # axes: x=Marti (columns of D), y=Restrander (rows of D)
+    ax.set_xticks(range(ct.shape[0])); ax.set_xticklabels(ct.index, rotation=45, ha='right')
+    ax.set_yticks(range(ct.shape[1])); ax.set_yticklabels(ct.columns)
+
+    # annotations: counts and optional %
+    for i in range(ct.shape[1]):          # rows in D / Restrander
+        for j in range(ct.shape[0]):      # cols in D / Marti
+            txt = str(ann[i, j])
+            if normalize:
+                txt += f"\n{D[i, j]*100:.1f}%"
+            ax.text(j, i, txt, ha='center', va='center', fontsize=9)
+
+    ax.set_xlabel("Marti categories", fontsize=12, fontweight="bold", labelpad=10)
+    ax.set_ylabel("Restrander categories", fontsize=12, fontweight="bold", labelpad=10)
 
     cbar = fig.colorbar(im, ax=ax, shrink=0.8)
     cbar.set_label(cbar_label)
+
     ax.set_title(title or "Marti vs Restrander")
     fig.tight_layout()
     if savepath:
@@ -282,7 +293,7 @@ def plot_upset_from_ct(
     plt.show()
 
 
-def plot_upset_from_per_input_df(per_input_df):
+def plot_upset_from_per_input_df(per_input_df, savepath=None):
 
     KEEP = ("Proper","TsoTso","RtRt","Unk")
     OTHER = "Other"
@@ -342,4 +353,6 @@ def plot_upset_from_per_input_df(per_input_df):
             leg.set_loc("upper left")           # anchor from upper left
 
     plt.tight_layout(rect=[0, 0, 0.85, 1])  # leave space for the legend
+    if savepath:
+        plt.savefig(savepath)
     plt.show()
