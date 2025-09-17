@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt, cm
+from matplotlib.patches import Rectangle
 import numpy as np
 import gzip
 import re
@@ -6,6 +7,7 @@ from pathlib import Path
 from collections import defaultdict, Counter
 import pandas as pd
 from upsetplot import UpSet, from_memberships
+import seaborn as sns
 
 
 ARTEFACT_RE = re.compile(r'(?:^|\s)artefact=([^\s]+)')
@@ -325,6 +327,8 @@ def plot_upset_from_per_input_df(per_input_df, savepath=None):
     )
     upset_input = from_memberships(sub["memberships"].tolist(),
                                    data=sub[["by","count"]])
+    by_labels = list(dict.fromkeys(sub["by"]))  # preserve encounter order
+    colors = sns.color_palette("tab20", len(by_labels))
 
     upset = UpSet(
         upset_input, 
@@ -337,7 +341,7 @@ def plot_upset_from_per_input_df(per_input_df, savepath=None):
     upset.add_stacked_bars(
         by="by", 
         sum_over="count",
-        colors=None,
+        colors=colors,
         title="Marti categories",
         elements=10
     )
@@ -352,6 +356,23 @@ def plot_upset_from_per_input_df(per_input_df, savepath=None):
             leg.set_bbox_to_anchor((1.05, 1))   # move outside to the right
             leg.set_loc("upper left")           # anchor from upper left
 
+    # annotate totals on stacked bars
+    total_sum = float(sub["count"].sum()) or 1.0
+    # pick the axis with the most rectangle patches (the stacked-bars axis)
+    stack_ax = max(fig.axes, key=lambda a: sum(isinstance(p, Rectangle) for p in a.patches))
+    # sum stacks per bar by x-center
+    per_bar = {}
+    top_y = {}
+    for p in stack_ax.patches:
+        xc = round(p.get_x() + p.get_width()/2, 6)
+        per_bar[xc] = per_bar.get(xc, 0.0) + p.get_height()
+        top_y[xc] = max(top_y.get(xc, 0.0), p.get_y() + p.get_height())
+    for xc, h in per_bar.items():
+        stack_ax.text(
+            xc, top_y[xc], f"{int(round(h))} ({h/total_sum*100:.1f}%)",
+            ha="left", va="bottom", fontsize=8, rotation=30, zorder=10, clip_on=False
+        )
+    
     plt.tight_layout(rect=[0, 0, 0.85, 1])  # leave space for the legend
     if savepath:
         plt.savefig(savepath)
