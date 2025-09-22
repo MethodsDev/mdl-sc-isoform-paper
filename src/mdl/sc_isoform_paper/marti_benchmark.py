@@ -161,24 +161,53 @@ def collapse_marti_ct(ct, keep=("Proper","TsoTso","RtRt","Unk"), other="Other"):
 
 
 # Plotting
-# ----- absolute times per input, grouped by tool -----
-def plot_absolute(df_long, metric="cpu_time", title=None, savepath=None):
-    d = df_long[df_long["metric"] == metric].copy()
-    inputs = sorted(d["input"].unique())
-    tools  = sorted(d["tool"].unique())
+# ----- per tool, grouped by library -----
+def plot_runtimes(tidy_df, agg_df, metric="cpu_time", title=None, savepath=None):
+    d_runs = tidy_df[tidy_df["metric"] == metric].copy()
+    d_agg  = agg_df[agg_df["metric"]  == metric].copy()
+
+    inputs = sorted(d_agg["input"].unique())
+    tools  = sorted(d_agg["tool"].unique())
     ix = {k:i for i,k in enumerate(inputs)}
-    tx = {k:i for i,k in enumerate(tools)}
+
     W = 0.8
     bar_w = W / max(1, len(tools))
-
     x = np.arange(len(inputs))
+
     fig, ax = plt.subplots(figsize=(max(8, len(inputs)*0.5), 8))
+
+    # bars: means
     for j, tool in enumerate(tools):
         y = np.full(len(inputs), np.nan)
-        sub = d[d["tool"] == tool]
+        yerr = np.full(len(inputs), np.nan)
+        sub = d_agg[d_agg["tool"] == tool]
         for _, r in sub.iterrows():
-            y[ix[r["input"]]] = r["seconds"]
-        ax.bar(x + (j - (len(tools)-1)/2)*bar_w, y, width=bar_w, label=tool)
+            y[ix[r["input"]]] = r["mean"]
+            yerr[ix[r["input"]]] = r["std"] if r["n"] > 1 else np.nan
+        xpos = x + (j - (len(tools)-1)/2)*bar_w
+        ax.bar(xpos, y, width=bar_w, label=tool)
+        # optional: draw error bars if std exists
+        has_err = ~np.isnan(yerr)
+        if has_err.any():
+            ax.errorbar(xpos[has_err], y[has_err], yerr=yerr[has_err],
+                        fmt='none', ecolor='black', elinewidth=1, capsize=2, capthick=1, alpha=0.6)
+
+    # overlay per-run points in black on each tool's column
+    for j, tool in enumerate(tools):
+        sub = d_runs[d_runs["tool"] == tool]
+        # deterministic small offsets for up to 5 runs
+        jitter_map = {r:i for i,r in enumerate(sorted(sub["run"].unique()))}
+        for _, r in sub.iterrows():
+            col_x = x[ix[r["input"]]] + (j - (len(tools)-1)/2)*bar_w
+            # place runs with tiny horizontal jitter within the bar
+            n_runs = len(jitter_map)
+            if n_runs <= 1:
+                dx = 0.0
+            else:
+                idx = jitter_map[r["run"]]
+                offsets = np.linspace(-bar_w*0.2, bar_w*0.2, n_runs)
+                dx = offsets[idx]
+            ax.plot(col_x + dx, r["seconds"], 'o', color='black', ms=3, zorder=5)
 
     ax.set_xticks(x)
     ax.set_xticklabels(inputs, rotation=60, ha="right")
@@ -190,6 +219,7 @@ def plot_absolute(df_long, metric="cpu_time", title=None, savepath=None):
     if savepath:
         fig.savefig(savepath, dpi=300)
     plt.show()
+
 
 # ----- heatmap with a direction for stats -----
 def plot_heatmap(ct, normalize=None, title=None, savepath=None):
